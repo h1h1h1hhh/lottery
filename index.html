@@ -10,16 +10,18 @@ body{font-family:'PingFang SC','Microsoft YaHei',sans-serif;background:linear-gr
 h1{font-size:1.6em;margin:15px 0;text-shadow:0 0 30px #ffd700;text-align:center}
 .ended{background:#f33;padding:15px 30px;border-radius:50px;font-size:1.2em;font-weight:bold;animation:pulse 1s infinite;margin:10px 0;text-align:center}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
-.card{background:rgba(255,255,255,.05);border:1px solid rgba(255,215,0,.3);border-radius:15px;padding:15px;max-width:360px;width:100%;text-align:center;margin:10px 0}
-.card h2{color:#ffd700;margin-bottom:10px}
+.card{background:rgba(255,255,255,.05);border:1px solid rgba(255,215,0,.3);border-radius:15px;padding:20px;max-width:360px;width:100%;text-align:center;margin:10px 0}
+.card h2{color:#ffd700;margin-bottom:10px;font-size:1.2em}
 input{width:80%;padding:10px 15px;border-radius:25px;border:2px solid #ffd700;background:rgba(255,255,255,.1);color:#fff;font-size:1.1em;text-align:center;margin:10px 0}
 .btn{padding:14px 35px;border:none;border-radius:30px;font-size:1.1em;font-weight:bold;cursor:pointer;margin:8px}
 .btn-go{background:linear-gradient(135deg,#ffd700,#ff8c00);color:#1a0033}
 .btn-go:disabled{opacity:.4}
 .prize{color:#ffd700;font-size:1.1em;margin:5px 0}
 .hint{color:#aaa;font-size:.8em;margin:8px 0}
-.won-name{font-size:1.5em;color:#ffd700}
-.fail{color:#f66;font-size:1em}
+.won{font-size:1.3em;color:#ffd700}
+.fail{color:#f66}
+.spin-anim{font-size:4em;animation:bounce .3s infinite alternate}
+@keyframes bounce{from{transform:scale(1)}to{transform:scale(1.2)}}
 </style>
 </head>
 <body>
@@ -27,124 +29,101 @@ input{width:80%;padding:10px 15px;border-radius:25px;border:2px solid #ffd700;ba
 <div id="endedTop"></div>
 <div class="card" id="card">
   <h2 id="cardTitle">请输入你的名字</h2>
-  <div id="cardBody"></div>
-  <div id="cardFooter"></div>
+  <div id="cardBody"><input id="nameInput" placeholder="输入名字"></div>
+  <div id="cardFooter"><button class="btn btn-go" onclick="go()">🎯 开始抽奖</button></div>
 </div>
 <div class="hint" id="syncHint">加载中...</div>
 
 <script>
-const STATE_URL='https://api.github.com/repos/h1h1h1hhh/lottery/contents/state.json';
-const TOKEN='ghp_'+'K9nIgzCtyWhjjCUTQTLatVnUEgbEXO1Bidv5';
-const ROUNDS=[
+const RAW='https://api.github.com/repos/h1h1h1hhh/lottery/contents/state.json';
+const TK='ghp_'+'K9nIgzCtyWhjjCUTQTLatVnUEgbEXO1Bidv5';
+const R=[
   {name:'🏆 特等奖',prize:'京东家电冰箱一台',count:1},
   {name:'🥇 一等奖',prize:'啤酒一箱+凤仪湾门票1张',count:2},
   {name:'🥈 二等奖',prize:'啤酒半箱+凤仪湾门票1张',count:3},
   {name:'🥉 三等奖',prize:'啤酒2瓶',count:6},
 ];
-let winners={0:[],1:[],2:[],3:[]},sha='',myName='',spinning=false;
+let W={0:[],1:[],2:[],3:[]},sha='',me='',busy=false;
 
-async function loadState(){
+async function load(){
   try{
-    const r=await fetch(STATE_URL,{headers:{Authorization:'token '+TOKEN},cache:'no-cache'});
+    const r=await fetch(RAW,{headers:{Authorization:'token '+TK},cache:'no-cache'});
     const d=await r.json();sha=d.sha;
     const s=JSON.parse(atob(d.content));
-    winners=s.winners||{0:[],1:[],2:[],3:[]};
-    const totalWon=Object.values(winners).flat().length;
-    const totalPrizes=ROUNDS.reduce((a,r)=>a+r.count,0);
-    if(totalWon>=totalPrizes){
-      document.getElementById('endedTop').innerHTML='<div class="ended">🎊 抽奖已结束</div>';
-    }
-    document.getElementById('syncHint').textContent='剩余奖品：'+(totalPrizes-totalWon)+' 份';
+    W=s.winners||{0:[],1:[],2:[],3:[]};
+    const won=Object.values(W).flat().length;
+    const total=R.reduce((a,r)=>a+r.count,0);
+    document.getElementById('syncHint').textContent='剩余奖品：'+(total-won)+' 份';
+    if(won>=total) document.getElementById('endedTop').innerHTML='<div class="ended">🎊 抽奖已结束，所有奖品已抽完</div>';
   }catch(e){document.getElementById('syncHint').textContent='⚠️ 加载失败';}
 }
 
-async function saveState(){
-  const content=btoa(unescape(encodeURIComponent(JSON.stringify({winners,nameList:[]}))));
-  const body=JSON.stringify({message:'抽奖',content,sha});
-  const r=await fetch(STATE_URL,{method:'PUT',headers:{Authorization:'token '+TOKEN,'Content-Type':'application/json'},body});
+async function save(){
+  const c=btoa(unescape(encodeURIComponent(JSON.stringify({winners:W,nameList:[]}))));
+  const r=await fetch(RAW,{method:'PUT',headers:{Authorization:'token '+TK,'Content-Type':'application/json'},body:JSON.stringify({message:'抽奖',content:c,sha})});
   const d=await r.json();sha=d.content.sha;
 }
 
-function showNameInput(){
-  document.getElementById('cardTitle').textContent='请输入你的名字';
-  document.getElementById('cardBody').innerHTML='<input id="nameInput" placeholder="输入名字后点开始">';
-  document.getElementById('cardFooter').innerHTML='<button class="btn btn-go" onclick="startSpin()">🎯 开始抽奖</button>';
-}
+async function go(){
+  const inp=document.getElementById('nameInput');
+  if(!inp.value.trim()){alert('请输入名字');return}
+  me=inp.value.trim();
+  await load();
+  const total=R.reduce((a,r)=>a+r.count,0);
+  const won=Object.values(W).flat();
 
-function showSpin(){
-  const won=Object.values(winners).flat();
-  if(won.includes(myName)){
-    // 已经中过奖了
-    let prize='';
-    ROUNDS.forEach((r,i)=>{if(winners[i].includes(myName))prize=r.prize;});
-    document.getElementById('cardTitle').textContent='你已中奖';
-    document.getElementById('cardBody').innerHTML=`<p class="won-name">🏆 ${myName}</p><p class="prize">${prize}</p><p style="color:#aaa">请到领奖处领取</p>`;
-    document.getElementById('cardFooter').innerHTML='';
-    return;
-  }
-  const totalWon=won.length;
-  const totalPrizes=ROUNDS.reduce((a,r)=>a+r.count,0);
-  if(totalWon>=totalPrizes){
+  if(won.length>=total){
     document.getElementById('cardTitle').textContent='来晚了！';
     document.getElementById('cardBody').innerHTML='<p class="fail">所有奖品已被抽完</p>';
     document.getElementById('cardFooter').innerHTML='';
     return;
   }
-  document.getElementById('cardTitle').textContent=myName+'，试试手气！';
-  document.getElementById('cardBody').innerHTML='<p style="font-size:3em">🎰</p>';
-  document.getElementById('cardFooter').innerHTML='<button class="btn btn-go" onclick="doSpin()">🔄 点击抽奖</button>';
-}
-
-async function startSpin(){
-  const inp=document.getElementById('nameInput');
-  if(!inp||!inp.value.trim()){alert('请输入名字');return}
-  myName=inp.value.trim();
-  await loadState();
+  if(won.includes(me)){
+    let p='';
+    R.forEach((r,i)=>{if(W[i].includes(me))p=r.prize;});
+    document.getElementById('cardTitle').textContent='你已经中奖了！';
+    document.getElementById('cardBody').innerHTML='<p class="won">🏆 '+me+'</p><p class="prize">'+p+'</p><p style="color:#aaa">请到领奖处领取</p>';
+    document.getElementById('cardFooter').innerHTML='';
+    return;
+  }
   showSpin();
 }
 
-async function doSpin(){
-  if(spinning)return;
-  await loadState();
-  const won=Object.values(winners).flat();
-  const totalPrizes=ROUNDS.reduce((a,r)=>a+r.count,0);
-  if(won.length>=totalPrizes){
-    document.getElementById('cardTitle').textContent='来晚了！';
-    document.getElementById('cardBody').innerHTML='<p class="fail">所有奖品已被抽完</p>';
-    document.getElementById('cardFooter').innerHTML='';
-    return;
-  }
-  if(won.includes(myName)){
-    showSpin();return;
-  }
-  spinning=true;
-  document.getElementById('cardBody').innerHTML='<p style="font-size:3em">🎰</p><p style="color:#ffd700">抽奖中...</p>';
-
-  // 随机决定是否中奖：基于剩余奖品数和假设参与人数
-  await new Promise(r=>setTimeout(r,1500+Math.random()*1500));
-
-  const remaining=totalPrizes-won.length;
-  // 20% 概率中奖
-  const win=Math.random()<0.2 && remaining>0;
-
-  if(win){
-    // 随机分配一个还有剩余的奖项
-    const availRounds=[];
-    ROUNDS.forEach((r,i)=>{if(winners[i].length<r.count)availRounds.push(i)});
-    const ri=availRounds[Math.floor(Math.random()*availRounds.length)];
-    winners[ri].push(myName);
-    await saveState();
-    document.getElementById('cardBody').innerHTML=`<p style="font-size:3em">🎊</p><p class="won-name">恭喜 ${myName}！</p><p class="prize">${ROUNDS[ri].prize}</p><p style="color:#aaa">请到领奖处领取</p>`;
-    document.getElementById('cardFooter').innerHTML='';
-  }else{
-    document.getElementById('cardBody').innerHTML=`<p style="font-size:3em">😢</p><p class="fail">很遗憾，没有中奖</p><p style="color:#aaa">每人只能抽一次哦</p>`;
-    document.getElementById('cardFooter').innerHTML='';
-  }
-  await loadState();
-  spinning=false;
+function showSpin(){
+  document.getElementById('cardTitle').textContent=me+'，试试手气！';
+  document.getElementById('cardBody').innerHTML='<div class="spin-anim">🎰</div><p style="color:#ffd700">抽奖中...</p>';
+  document.getElementById('cardFooter').innerHTML='';
+  setTimeout(doSpin, 1500+Math.random()*1500);
 }
 
-loadState();showNameInput();setInterval(loadState,15000);
+async function doSpin(){
+  await load();
+  const total=R.reduce((a,r)=>a+r.count,0);
+  const won=Object.values(W).flat();
+  if(won.length>=total){
+    document.getElementById('cardTitle').textContent='来晚了！';
+    document.getElementById('cardBody').innerHTML='<p class="fail">奖品已被抽完</p>';
+    return;
+  }
+  if(won.includes(me)){
+    let p='';R.forEach((r,i)=>{if(W[i].includes(me))p=r.prize;});
+    document.getElementById('cardTitle').textContent='你已经中奖了！';
+    document.getElementById('cardBody').innerHTML='<p class="won">🏆 '+me+'</p><p class="prize">'+p+'</p>';
+    return;
+  }
+
+  // 先到先得：只要还有奖品就中，随机分配奖项等级
+  const avail=[];
+  R.forEach((r,i)=>{if(W[i].length<r.count)avail.push(i)});
+  const ri=avail[Math.floor(Math.random()*avail.length)];
+  W[ri].push(me);
+  await save();
+
+  document.getElementById('cardBody').innerHTML='<p style="font-size:3em">🎊</p><p class="won">恭喜 '+me+'！</p><p class="prize">'+R[ri].prize+'</p><p style="color:#aaa">请到领奖处领取</p>';
+  await load();
+}
+
+load();setInterval(load,15000);
 </script>
 </body>
 </html>
