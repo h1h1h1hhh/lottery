@@ -20,8 +20,6 @@ input{width:80%;padding:10px 15px;border-radius:25px;border:2px solid #ffd700;ba
 .hint{color:#aaa;font-size:.8em;margin:8px 0}
 .won{font-size:1.3em;color:#ffd700}
 .fail{color:#f66}
-.spin-anim{font-size:4em;animation:bounce .3s infinite alternate}
-@keyframes bounce{from{transform:scale(1)}to{transform:scale(1.2)}}
 </style>
 </head>
 <body>
@@ -38,10 +36,10 @@ input{width:80%;padding:10px 15px;border-radius:25px;border:2px solid #ffd700;ba
 const RAW='https://api.github.com/repos/h1h1h1hhh/lottery/contents/state.json';
 const TK='ghp_'+'K9nIgzCtyWhjjCUTQTLatVnUEgbEXO1Bidv5';
 const R=[
-  {name:'🏆 特等奖',prize:'京东家电冰箱一台',count:1},
-  {name:'🥇 一等奖',prize:'啤酒一箱+凤仪湾门票1张',count:2},
-  {name:'🥈 二等奖',prize:'啤酒半箱+凤仪湾门票1张',count:3},
-  {name:'🥉 三等奖',prize:'啤酒2瓶',count:6},
+  {name:'🏆 特等奖',prize:'京东家电冰箱一台',count:1,weight:5},
+  {name:'🥇 一等奖',prize:'啤酒一箱+凤仪湾门票1张',count:2,weight:15},
+  {name:'🥈 二等奖',prize:'啤酒半箱+凤仪湾门票1张',count:3,weight:30},
+  {name:'🥉 三等奖',prize:'啤酒2瓶',count:6,weight:50},
 ];
 let W={0:[],1:[],2:[],3:[]},sha='',me='',busy=false;
 
@@ -55,7 +53,7 @@ async function load(){
     const total=R.reduce((a,r)=>a+r.count,0);
     document.getElementById('syncHint').textContent='剩余奖品：'+(total-won)+' 份';
     if(won>=total) document.getElementById('endedTop').innerHTML='<div class="ended">🎊 抽奖已结束，所有奖品已抽完</div>';
-  }catch(e){document.getElementById('syncHint').textContent='⚠️ 加载失败';}
+  }catch(e){console.error(e)}
 }
 
 async function save(){
@@ -65,62 +63,103 @@ async function save(){
 }
 
 async function go(){
+  if(busy)return;
   const inp=document.getElementById('nameInput');
-  if(!inp.value.trim()){alert('请输入名字');return}
-  me=inp.value.trim();
-  await load();
-  const total=R.reduce((a,r)=>a+r.count,0);
-  const won=Object.values(W).flat();
+  const name=inp.value.trim();
+  if(!name){alert('请输入名字');return}
+  me=name;
+  busy=true;
 
-  if(won.length>=total){
-    document.getElementById('cardTitle').textContent='来晚了！';
-    document.getElementById('cardBody').innerHTML='<p class="fail">所有奖品已被抽完</p>';
-    document.getElementById('cardFooter').innerHTML='';
-    return;
-  }
-  if(won.includes(me)){
+  await load();
+
+  // 检查此人是否已中奖
+  const allWon=Object.values(W).flat();
+  if(allWon.includes(me)){
     let p='';
     R.forEach((r,i)=>{if(W[i].includes(me))p=r.prize;});
     document.getElementById('cardTitle').textContent='你已经中奖了！';
     document.getElementById('cardBody').innerHTML='<p class="won">🏆 '+me+'</p><p class="prize">'+p+'</p><p style="color:#aaa">请到领奖处领取</p>';
     document.getElementById('cardFooter').innerHTML='';
+    busy=false;
     return;
   }
-  showSpin();
+
+  // 检查是否全部抽完
+  const total=R.reduce((a,r)=>a+r.count,0);
+  if(allWon.length>=total){
+    document.getElementById('cardTitle').textContent='来晚了！';
+    document.getElementById('cardBody').innerHTML='<p class="fail">所有奖品已被抽完</p>';
+    document.getElementById('cardFooter').innerHTML='';
+    busy=false;
+    return;
+  }
+
+  // 检查此设备是否已抽过（localStorage）
+  if(localStorage.getItem('lottery_done')){
+    document.getElementById('cardTitle').textContent='你已经抽过了！';
+    document.getElementById('cardBody').innerHTML='<p class="fail">每人只能抽一次哦</p>';
+    document.getElementById('cardFooter').innerHTML='';
+    busy=false;
+    return;
+  }
+
+  showSpinAnim();
 }
 
-function showSpin(){
+function showSpinAnim(){
   document.getElementById('cardTitle').textContent=me+'，试试手气！';
-  document.getElementById('cardBody').innerHTML='<div class="spin-anim">🎰</div><p style="color:#ffd700">抽奖中...</p>';
+  document.getElementById('cardBody').innerHTML='<p style="font-size:4em">🎰</p><p style="color:#ffd700">抽奖中...</p>';
   document.getElementById('cardFooter').innerHTML='';
   setTimeout(doSpin, 1500+Math.random()*1500);
 }
 
 async function doSpin(){
   await load();
+
+  const allWon=Object.values(W).flat();
   const total=R.reduce((a,r)=>a+r.count,0);
-  const won=Object.values(W).flat();
-  if(won.length>=total){
+  if(allWon.length>=total){
     document.getElementById('cardTitle').textContent='来晚了！';
     document.getElementById('cardBody').innerHTML='<p class="fail">奖品已被抽完</p>';
-    return;
-  }
-  if(won.includes(me)){
-    let p='';R.forEach((r,i)=>{if(W[i].includes(me))p=r.prize;});
-    document.getElementById('cardTitle').textContent='你已经中奖了！';
-    document.getElementById('cardBody').innerHTML='<p class="won">🏆 '+me+'</p><p class="prize">'+p+'</p>';
+    busy=false;
     return;
   }
 
-  // 先到先得：只要还有奖品就中，随机分配奖项等级
+  // 计算中奖概率：剩余奖品数 / (剩余奖品数 + 15)
+  // 人数多的时候概率低，人少的时候概率高
+  const remaining=total-allWon.length;
+  const chance=Math.min(remaining/(remaining+10), 0.5);
+  const win=Math.random()<chance;
+
+  if(!win){
+    localStorage.setItem('lottery_done','1');
+    document.getElementById('cardBody').innerHTML='<p style="font-size:3em">😢</p><p class="fail">很遗憾，没有中奖</p><p style="color:#aaa">每人只能抽一次</p>';
+    document.getElementById('cardFooter').innerHTML='';
+    busy=false;
+    return;
+  }
+
+  // 中奖了！加权随机分配奖项
   const avail=[];
-  R.forEach((r,i)=>{if(W[i].length<r.count)avail.push(i)});
-  const ri=avail[Math.floor(Math.random()*avail.length)];
+  R.forEach((r,i)=>{
+    if(W[i].length<r.count) avail.push({idx:i,weight:r.weight});
+  });
+  // 加权随机
+  const totalW=avail.reduce((s,a)=>s+a.weight,0);
+  let rnd=Math.random()*totalW;
+  let ri=avail[0].idx;
+  for(const a of avail){
+    rnd-=a.weight;
+    if(rnd<=0){ri=a.idx;break;}
+  }
+
   W[ri].push(me);
   await save();
+  localStorage.setItem('lottery_done','1');
 
   document.getElementById('cardBody').innerHTML='<p style="font-size:3em">🎊</p><p class="won">恭喜 '+me+'！</p><p class="prize">'+R[ri].prize+'</p><p style="color:#aaa">请到领奖处领取</p>';
   await load();
+  busy=false;
 }
 
 load();setInterval(load,15000);
