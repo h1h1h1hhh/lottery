@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>🎉 抽奖大转盘</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  background: linear-gradient(135deg, #0a001f 0%, #1a0033 50%, #0d0028 100%);
+  min-height: 100vh; display: flex; flex-direction: column; align-items: center;
+  color: #fff; padding: 10px; overflow-x: hidden;
+}
+.title { font-size: 2em; margin: 15px 0 5px; text-align: center; text-shadow: 0 0 30px #ffd700; }
+.subtitle { color: #ccc; margin-bottom: 10px; font-size: 0.9em; }
+
+.round-selector { display: flex; gap: 8px; margin: 10px 0; flex-wrap: wrap; justify-content: center; }
+.round-btn {
+  padding: 10px 18px; border: 2px solid #ffd700; background: transparent;
+  color: #ffd700; border-radius: 25px; font-size: 1em; cursor: pointer;
+  transition: all 0.3s; font-weight: bold;
+}
+.round-btn:hover, .round-btn.active {
+  background: #ffd700; color: #1a0033; box-shadow: 0 0 20px #ffd700;
+}
+
+.wheel-container { position: relative; width: 320px; height: 320px; margin: 15px auto; }
+canvas { width: 100%; height: 100%; }
+.pointer {
+  position: absolute; top: -15px; left: 50%; transform: translateX(-50%);
+  font-size: 2.5em; filter: drop-shadow(0 0 10px #ffd700); z-index: 10;
+}
+
+.btn-group { display: flex; gap: 15px; margin: 15px 0; flex-wrap: wrap; justify-content: center; }
+.btn {
+  padding: 15px 40px; border: none; border-radius: 30px; font-size: 1.2em;
+  font-weight: bold; cursor: pointer; transition: all 0.3s; letter-spacing: 2px;
+}
+.btn-spin { background: linear-gradient(135deg, #ffd700, #ff8c00); color: #1a0033; box-shadow: 0 0 30px rgba(255,215,0,0.5); }
+.btn-spin:hover { transform: scale(1.05); box-shadow: 0 0 50px rgba(255,215,0,0.8); }
+.btn-spin:disabled { opacity: 0.5; transform: none; cursor: not-allowed; }
+.btn-reset { background: transparent; border: 2px solid #fff; color: #fff; }
+.btn-reset:hover { background: rgba(255,255,255,0.1); }
+
+.result-box {
+  background: rgba(255,255,255,0.05); border: 1px solid rgba(255,215,0,0.3);
+  border-radius: 15px; padding: 15px; max-width: 380px; width: 100%; margin: 10px 0;
+  backdrop-filter: blur(10px); text-align: center; min-height: 50px;
+}
+.result-box h3 { color: #ffd700; margin-bottom: 8px; }
+.winner-name { font-size: 1.5em; color: #fff; margin: 5px 0; word-break: break-all; }
+.prize-name { font-size: 1.1em; color: #ffd700; margin: 3px 0; }
+
+.history-box { max-width: 380px; width: 100%; margin: 10px 0; }
+.history-box h4 { color: #ffd700; margin-bottom: 8px; }
+.history-item {
+  background: rgba(255,255,255,0.05); border-radius: 8px; padding: 8px 12px;
+  margin: 5px 0; display: flex; justify-content: space-between; font-size: 0.85em;
+}
+
+.confetti { position: fixed; pointer-events: none; z-index: 999; }
+
+.name-pool-box {
+  max-width: 380px; width: 100%; margin: 10px 0;
+}
+.name-pool-box textarea {
+  width: 100%; height: 80px; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,215,0,0.3);
+  color: #fff; border-radius: 8px; padding: 10px; font-size: 14px; resize: vertical;
+}
+.name-pool-box label { color: #ccc; font-size: 0.9em; margin-bottom: 5px; display: block; }
+.hint { color: #aaa; font-size: 0.8em; margin-top: 3px; }
+</style>
+</head>
+<body>
+
+<h1 class="title">🎰 幸运大转盘</h1>
+<p class="subtitle">凤仪湾 · 啤酒狂欢</p>
+
+<div class="round-selector">
+  <button class="round-btn active" onclick="switchRound(0)">🏆 特等奖</button>
+  <button class="round-btn" onclick="switchRound(1)">🥇 一等奖</button>
+  <button class="round-btn" onclick="switchRound(2)">🥈 二等奖</button>
+  <button class="round-btn" onclick="switchRound(3)">🥉 三等奖</button>
+</div>
+
+<div class="wheel-container">
+  <div class="pointer">▼</div>
+  <canvas id="wheel" width="320" height="320"></canvas>
+</div>
+
+<div class="btn-group">
+  <button class="btn btn-spin" id="spinBtn" onclick="spin()">🎯 开始抽奖</button>
+  <button class="btn btn-reset" onclick="resetAll()">🔄 重新开始</button>
+</div>
+
+<div class="result-box" id="resultBox">
+  <p style="color:#aaa;">👆 选一个奖项，然后点击抽奖</p>
+</div>
+
+<div class="name-pool-box">
+  <label>📋 参与名单（一行一个名字，已获奖者自动移除）</label>
+  <textarea id="namePool" placeholder="张三&#10;李四&#10;王五&#10;赵六&#10;..." onchange="updatePool()"></textarea>
+  <p class="hint" id="poolHint">当前参与人数：0</p>
+</div>
+
+<div class="history-box">
+  <h4>📜 获奖记录</h4>
+  <div id="historyList"><p style="color:#aaa;">暂无记录</p></div>
+</div>
+
+<script>
+// ===== 奖品配置 =====
+const ROUNDS = [
+  { name: '🏆 特等奖', prize: '京东家电冰箱一台', count: 1, color: '#ff0000' },
+  { name: '🥇 一等奖', prize: '啤酒一箱 + 凤仪湾门票1张', count: 2, color: '#ff6600' },
+  { name: '🥈 二等奖', prize: '啤酒半箱 + 凤仪湾门票1张', count: 3, color: '#ffaa00' },
+  { name: '🥉 三等奖', prize: '啤酒2瓶', count: 6, color: '#ffd700' },
+];
+
+let currentRound = 0;
+let winners = {}; // round_index -> [name, ...]
+let spinning = false;
+let angle = 0;
+let nameList = [];
+
+// 初始化名单
+ROUNDS.forEach((r, i) => { winners[i] = []; });
+
+// ===== Canvas 转盘 =====
+const canvas = document.getElementById('wheel');
+const ctx = canvas.getContext('2d');
+const cx = 160, cy = 160, radius = 150;
+
+function drawWheel(highlightAngle = -1) {
+  ctx.clearRect(0, 0, 320, 320);
+  const r = ROUNDS[currentRound];
+  const total = Math.min(nameList.length, 12);
+  const sliceAngle = Math.PI * 2 / Math.max(total, 1);
+
+  if (total === 0) {
+    // 空转盘
+    ctx.beginPath(); ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+    ctx.fillStyle = '#333'; ctx.fill();
+    ctx.fillStyle = '#fff'; ctx.font = '16px "Microsoft YaHei"';
+    ctx.textAlign = 'center'; ctx.fillText('请先添加名单', cx, cy);
+    return;
+  }
+
+  for (let i = 0; i < total; i++) {
+    const startAngle = angle + i * sliceAngle;
+    const endAngle = startAngle + sliceAngle;
+    const colors = ['#ff4444','#4444ff','#44aa44','#ff8844','#aa44aa','#44aaaa','#ff6688','#6688ff','#88cc44','#cc8844','#8844cc','#44cc88'];
+    ctx.beginPath(); ctx.moveTo(cx, cy); ctx.arc(cx, cy, radius, startAngle, endAngle);
+    ctx.fillStyle = colors[i % colors.length]; ctx.fill();
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5; ctx.stroke();
+
+    // 文字
+    ctx.save(); ctx.translate(cx, cy); ctx.rotate(startAngle + sliceAngle / 2);
+    ctx.textAlign = 'right'; ctx.fillStyle = '#fff'; ctx.font = 'bold 12px "Microsoft YaHei"';
+    const text = nameList[i].length > 4 ? nameList[i].slice(0, 4) + '..' : nameList[i];
+    ctx.fillText(text, radius - 15, 4); ctx.restore();
+  }
+
+  // 中心圆
+  ctx.beginPath(); ctx.arc(cx, cy, 30, 0, Math.PI * 2);
+  ctx.fillStyle = '#1a0033'; ctx.fill();
+  ctx.strokeStyle = '#ffd700'; ctx.lineWidth = 2; ctx.stroke();
+  ctx.fillStyle = '#ffd700'; ctx.font = 'bold 14px "Microsoft YaHei"';
+  ctx.textAlign = 'center'; ctx.fillText(r.name, cx, cy + 5);
+}
+
+function updatePool() {
+  nameList = document.getElementById('namePool').value.split('\n').map(s => s.trim()).filter(s => s);
+  document.getElementById('poolHint').textContent = '当前参与人数：' + nameList.length;
+  drawWheel();
+}
+
+function switchRound(idx) {
+  currentRound = idx;
+  document.querySelectorAll('.round-btn').forEach((b, i) => b.classList.toggle('active', i === idx));
+  document.getElementById('resultBox').innerHTML = '<p style="color:#aaa;">👆 选好奖项，点击抽奖</p>';
+  drawWheel();
+}
+
+function spin() {
+  if (spinning) return;
+  const r = ROUNDS[currentRound];
+  const available = nameList.filter(n => {
+    // 排除所有已获奖的人
+    return !Object.values(winners).flat().includes(n);
+  });
+
+  if (available.length === 0) {
+    document.getElementById('resultBox').innerHTML = '<p style="color:#ff6666;">⚠️ 没有可参与抽奖的人了</p>';
+    return;
+  }
+  if (winners[currentRound].length >= r.count) {
+    document.getElementById('resultBox').innerHTML = `<p style="color:#ff6666;">⚠️ ${r.name} 已抽满（${r.count}人）</p>`;
+    return;
+  }
+
+  spinning = true;
+  document.getElementById('spinBtn').disabled = true;
+
+  // 随机选人
+  const winner = available[Math.floor(Math.random() * available.length)];
+
+  // 动画旋转
+  const winnerIdx = nameList.indexOf(winner);
+  const sliceAngle = Math.PI * 2 / Math.max(nameList.length, 1);
+  const targetAngle = angle + (Math.PI * 2 * 5) + (Math.PI * 2 - (winnerIdx * sliceAngle) - sliceAngle / 2);
+  const startAngle = angle;
+  const duration = 3000;
+  const startTime = Date.now();
+
+  function animate() {
+    const elapsed = Date.now() - startTime;
+    const progress = Math.min(elapsed / duration, 1);
+    // ease out
+    const ease = 1 - Math.pow(1 - progress, 3);
+    angle = startAngle + (targetAngle - startAngle) * ease;
+    drawWheel();
+
+    if (progress < 1) {
+      requestAnimationFrame(animate);
+    } else {
+      // 完成
+      angle = targetAngle % (Math.PI * 2);
+      winners[currentRound].push(winner);
+      spinning = false;
+      document.getElementById('spinBtn').disabled = false;
+
+      document.getElementById('resultBox').innerHTML = `
+        <h3>🎊 恭喜中奖！</h3>
+        <p class="winner-name">${winner}</p>
+        <p class="prize-name">${r.prize}</p>
+      `;
+
+      updateHistory();
+      drawWheel();
+      spawnConfetti();
+    }
+  }
+
+  requestAnimationFrame(animate);
+}
+
+function updateHistory() {
+  const list = document.getElementById('historyList');
+  let html = '';
+  ROUNDS.forEach((r, i) => {
+    if (winners[i].length > 0) {
+      winners[i].forEach(w => {
+        html += `<div class="history-item"><span>${w}</span><span style="color:#ffd700;">${r.prize}</span></div>`;
+      });
+    }
+  });
+  list.innerHTML = html || '<p style="color:#aaa;">暂无记录</p>';
+}
+
+function resetAll() {
+  if (!confirm('确定要清除所有获奖记录并重新开始吗？')) return;
+  ROUNDS.forEach((r, i) => { winners[i] = []; });
+  document.getElementById('resultBox').innerHTML = '<p style="color:#aaa;">👆 选好奖项，点击抽奖</p>';
+  updateHistory();
+  drawWheel();
+}
+
+// ===== 撒花 =====
+function spawnConfetti() {
+  const colors = ['#ffd700','#ff4444','#44ff44','#4444ff','#ff44ff','#44ffff','#ff8800'];
+  for (let i = 0; i < 80; i++) {
+    const el = document.createElement('div');
+    el.className = 'confetti';
+    el.style.cssText = `
+      left: ${Math.random() * 100}vw; top: -10px;
+      width: ${Math.random() * 10 + 5}px; height: ${Math.random() * 10 + 5}px;
+      background: ${colors[Math.floor(Math.random() * colors.length)]};
+      border-radius: ${Math.random() > 0.5 ? '50%' : '0'};
+      animation: fall ${Math.random() * 2 + 2}s linear forwards;
+      animation-delay: ${Math.random() * 0.5}s;
+    `;
+    document.body.appendChild(el);
+    setTimeout(() => el.remove(), 3000);
+  }
+}
+
+// ===== 初始绘制 =====
+drawWheel();
+
+// 注入动画CSS
+const style = document.createElement('style');
+style.textContent = `
+@keyframes fall {
+  0% { transform: translateY(0) rotate(0deg); opacity: 1; }
+  100% { transform: translateY(100vh) rotate(720deg); opacity: 0; }
+}`;
+document.head.appendChild(style);
+</script>
+</body>
+</html>
