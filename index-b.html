@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>🎉 中奖公示</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'PingFang SC','Microsoft YaHei',sans-serif;background:linear-gradient(135deg,#0a001f,#1a0033 50%,#0d0028);min-height:100vh;display:flex;flex-direction:column;align-items:center;color:#fff;padding:15px}
+h1{font-size:1.5em;margin:15px 0;text-shadow:0 0 30px #ffd700;text-align:center}
+.sub{color:#ccc;font-size:.85em;margin-bottom:10px}
+.ended-top{background:#f33;padding:12px 25px;border-radius:50px;font-size:1.1em;font-weight:bold;animation:pulse 1s infinite;margin:8px 0;text-align:center}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
+.p-card{background:rgba(255,255,255,.05);border:1px solid rgba(255,215,0,.3);border-radius:12px;padding:12px;margin:5px 0;width:100%;max-width:400px}
+.p-card h3{color:#ffd700;font-size:1em}
+.p-card .desc{color:#999;font-size:.8em;margin:3px 0 6px}
+.w-tag{display:inline-block;background:#ffd700;color:#1a0033;padding:3px 10px;border-radius:12px;margin:2px;font-weight:bold;font-size:.85em}
+.empty{color:#555;font-size:.8em}
+.loading{color:#aaa;margin:30px}
+.bar{color:#aaa;font-size:.8em;background:rgba(255,255,255,.05);padding:8px 16px;border-radius:20px;margin-bottom:8px}
+.btn{background:transparent;border:1px solid #ffd700;color:#ffd700;padding:8px 20px;border-radius:20px;cursor:pointer;font-size:.85em;margin:10px 0}
+.footer{color:#555;font-size:.7em;margin-top:20px}
+</style>
+</head>
+<body>
+<h1>🎰 凤仪湾 · 啤酒狂欢</h1>
+<p class="sub">中奖结果公示</p>
+<div id="endedBox"></div>
+<div class="bar" id="bar">加载中...</div>
+<div id="list"></div>
+<button class="btn" onclick="load()">🔄 刷新</button>
+<p class="footer">扫码可查看最新中奖结果</p>
+
+<script>
+const URL='https://api.github.com/repos/h1h1h1hhh/lottery/contents/state.json';
+const TK='ghp_'+'K9nIgzCtyWhjjCUTQTLatVnUEgbEXO1Bidv5';
+const ROUNDS=[
+  {name:'🏆 特等奖',prize:'京东家电冰箱一台',count:1},
+  {name:'🥇 一等奖',prize:'啤酒一箱+凤仪湾门票1张',count:2},
+  {name:'🥈 二等奖',prize:'啤酒半箱+凤仪湾门票1张',count:3},
+  {name:'🥉 三等奖',prize:'啤酒2瓶',count:6},
+];
+async function load(){
+  document.getElementById('list').innerHTML='<p class="loading">⏳ 加载中...</p>';
+  try{
+    const r=await fetch(URL,{headers:{Authorization:'token '+TK},cache:'no-cache'});
+    const d=await r.json();
+    const s=JSON.parse(atob(d.content));
+    const w=s.winners||{};
+    const won=Object.values(w).flat().length;
+    const total=ROUNDS.reduce((a,r)=>a+r.count,0);
+    document.getElementById('bar').textContent='已抽出：'+won+' / '+total+' 人';
+    if(won>=total)document.getElementById('endedBox').innerHTML='<div class="ended-top">🎊 抽奖已结束</div>';
+    let html='';
+    ROUNDS.forEach((r,i)=>{
+      const list=w[i]||[];
+      html+='<div class="p-card"><h3>'+r.name+'</h3><div class="desc">'+r.prize+'（'+list.length+'/'+r.count+'）</div>';
+      if(list.length===0)html+='<span class="empty">待抽取</span>';
+      else list.forEach(n=>{html+='<span class="w-tag">🏆 '+n+'</span>'});
+      html+='</div>';
+    });
+    document.getElementById('list').innerHTML=html;
+  }catch(e){document.getElementById('list').innerHTML='<p class="loading">❌ 加载失败</p>'}
+}
+load();setInterval(load,10000);
+</script>
+</body>
+</html>
