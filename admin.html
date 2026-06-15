@@ -51,7 +51,7 @@ async function loadData(){
     document.getElementById('data').innerHTML=h;
   }catch(e){document.getElementById('msg').textContent='加载失败'}
 }
-async function save(W2){const s={w:W2};const b=JSON.stringify({message:'a',content:enc(JSON.stringify(s)),sha});const r=await fetch(RAW,{method:'PUT',headers:{Authorization:'token '+TK,'Content-Type':'application/json'},body:b});const d=await r.json();sha=d.content.sha;}
+async function save(W2){for(let i=0;i<8;i++){try{const s={w:W2};const b=JSON.stringify({message:'a',content:enc(JSON.stringify(s)),sha});const r=await fetch(RAW,{method:'PUT',headers:{Authorization:'token '+TK,'Content-Type':'application/json'},body:b});if(!r.ok){if(r.status===409){await loadData();await new Promise(x=>setTimeout(x,200));continue;}throw new Error('fail');}const d=await r.json();sha=d.content.sha;return true;}catch(e){await loadData();await new Promise(x=>setTimeout(x,200));}}return false;}
 async function resetAll(){if(!confirm('确定重置？'))return;await save({0:[],1:[],2:[],3:[]});await loadData();q('已重置');}
 async function unlock(){const n=document.getElementById('uname').value.trim();if(!n)return;await loadData();let f=false;for(let i=0;i<4;i++){W[i]=(W[i]||[]).filter(x=>{if((x.n||x)===n){f=true;return false}return true});}if(f){await save(W);await loadData();q('已解除：'+n);}else{q('未找到：'+n);}}
 function rm(i,n){if(confirm('移除 '+n+'？')){W[i]=(W[i]||[]).filter(x=>(x.n||x)!==n);save(W).then(loadData);}}
